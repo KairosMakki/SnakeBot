@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20, 22]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node ${{ matrix.node }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Show environment
+        run: node --version && npm --version
+
+      - name: Syntax check (userscript)
+        run: node --check google_snake_bot_user.js
+
+      - name: Run test suite
+        run: npm test
+
+      - name: Benchmark planner (informational)
+        if: matrix.node == 22
+        run: npm run bench
+
+  package:
+    name: package userscript
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify metadata block
+        run: |
+          node --check google_snake_bot_user.js
+          grep -q "@name" google_snake_bot_user.js
+          grep -q "@match" google_snake_bot_user.js
+          grep -q "@version" google_snake_bot_user.js
+          echo "metadata OK"
+
+      - name: Upload installable userscript
+        uses: actions/upload-artifact@v4
+        with:
+          name: snakebot-userscript
+          path: google_snake_bot_user.js
+          if-no-files-found: error
+          retention-days: 30
